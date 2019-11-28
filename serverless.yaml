@@ -1,0 +1,256 @@
+frameworkVersion: ">=1.36.0 <2.0.0"
+
+service: beeline-py-propagation-test
+
+provider:
+  name: aws
+  region: eu-west-1
+  runtime: python3.7
+  stage: live
+  environment:
+    # HONEYCOMB_WRITEKEY: 'xxx'
+    HONEYCOMB_WRITEKEY: ${ssm:/aws/reference/secretsmanager/testing/honeycomb-key~true}
+
+    HONEYCOMB_DATASET: 'vlad-testing'
+    HONEYCOMB_SERVICE: 'beeline-py-propagation-tests'
+
+plugins:
+  - serverless-python-requirements
+  - serverless-iam-roles-per-function
+  - serverless-apigateway-service-proxy
+  - serverless-cloudformation-sub-variables
+
+custom:
+  pythonRequirements:
+    dockerizePip: true
+    individually: true
+    slim: true
+
+  apiGatewayServiceProxies:
+    - sqs:
+        path: /sqs
+        method: post
+        queueName: Sqs1
+        cors:
+          origin: '*'
+          headers:
+            - Content-Type
+            - X-Amz-Date
+            - Authorization
+            - X-Api-Key
+            - X-Amz-Security-Token
+            - X-Amz-User-Agent
+            - X-Honeycomb-Trace
+          allowCredentials: false
+
+        acceptParameters:
+          'method.request.header.X-Honeycomb-Trace': false
+
+        requestParameters:
+          'integration.request.querystring.MessageAttributes.1.Name': "'x-honeycomb-trace'"
+          'integration.request.querystring.MessageAttributes.1.Value.DataType': "'String'"
+
+          'integration.request.querystring.MessageAttributes.1.Value.StringValue': "method.request.header.X-Honeycomb-Trace"
+
+    - sns:
+        path: /sns
+        method: post
+        topicName: Sns3
+        cors:
+          origin: '*'
+          headers:
+            - Content-Type
+            - X-Amz-Date
+            - Authorization
+            - X-Api-Key
+            - X-Amz-Security-Token
+            - X-Amz-User-Agent
+            - X-Honeycomb-Trace
+          allowCredentials: false
+        request:
+          template:
+            application/json:
+              Fn::Sub:
+                - "Action=Publish&Message=$util.urlEncode($input.body)&TopicArn=$util.urlEncode('#{MyTopicArn}')&MessageAttributes.member.1.Name=x-honeycomb-trace&MessageAttributes.member.1.Value.DataType=String&MessageAttributes.member.1.Value.StringValue=$util.urlEncode($input.params().header.get('X-Honeycomb-Trace'))"
+                - MyTopicArn: { Ref: Sns3 }
+
+package:
+  individually: true
+  exclude:
+    - venv/**
+    - node_modules/**
+    - layers/**
+    - .git/**
+    - __pycache_
+    - test_app/**
+    - docs/**
+
+functions:
+  Lambda3:
+    runtime: python3.7
+    handler: entrypoint.lambda3
+
+    events:
+      - sns:
+          arn: !Ref Sns3
+          topicName: Sns3
+
+    iamRoleStatementsName: Lambda3
+    iamRoleStatements: []
+
+  Lambda1:
+    runtime: python3.7
+    handler: entrypoint.lambda1
+
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - Sqs1
+              - Arn
+          batchSize: 1
+
+    iamRoleStatementsName: Lambda1
+    iamRoleStatements: []
+
+  Lambda2:
+    runtime: python3.7
+    handler: entrypoint.lambda2
+    environment:
+      SNS_TO_PUBLISH_TO: {"Ref": "Sns2"}
+
+    events:
+      - http:
+          path: /lambda
+          method: post
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+              - X-Honeycomb-Trace
+            allowCredentials: false
+
+    iamRoleStatementsName: Lambda2
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - sts:GetCallerIdentity
+          - sts:AssumeRole
+          - sns:*
+        Resource: "*"
+
+  Lambda21:
+    runtime: python3.7
+    handler: entrypoint.lambda21
+
+    events:
+      - sns:
+          arn: !Ref Sns2
+          topicName: Sns2
+
+    iamRoleStatementsName: Lambda21
+    iamRoleStatements: []
+
+  Lambda22:
+    runtime: python3.7
+    handler: entrypoint.lambda22
+
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - Sqs22
+              - Arn
+          batchSize: 1
+
+    iamRoleStatementsName: Lambda22
+    iamRoleStatements: []
+
+  Lambda23:
+    runtime: python3.7
+    handler: entrypoint.lambda23
+
+    events:
+      - http:
+          path: /thing
+          method: post
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+              - X-Honeycomb-Trace
+            allowCredentials: false
+
+resources:
+  Resources:
+    Sns3:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: Sns3
+
+    Sqs1:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: Sqs1
+
+    Sns2:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: Sns2
+
+    Sqs22:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: Sqs22
+    SqsQueuePolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            Effect: Allow
+            Principal: '*'
+            Action: SQS:SendMessage
+            Resource:
+              Fn::GetAtt: [Sqs22, Arn]
+            Condition:
+              ArnEquals:
+                aws:SourceArn:
+                  Ref: Sns2
+        Queues:
+          - Ref: Sqs22
+    Sns2ToSqs22:
+      Type: AWS::SNS::Subscription
+      Properties:
+        Protocol: sqs
+        RawMessageDelivery: true
+        Endpoint:
+          Fn::GetAtt: [Sqs22, Arn]
+        TopicArn: !Ref Sns2
+
+    SCMSubscription:
+      Type: 'AWS::SNS::Subscription'
+      Properties:
+        TopicArn: !Ref Sns2
+        Endpoint:
+          Fn::Join:
+          - ''
+          - - 'https://'
+            - !Ref ApiGatewayRestApi
+            - '.execute-api.'
+            - ${opt:region, self:provider.region}
+            - '.amazonaws.com/'
+            - ${opt:stage, self:provider.stage}
+            - '/thing'
+        Protocol: https
+        RawMessageDelivery: true

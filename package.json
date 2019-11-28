@@ -1,0 +1,22 @@
+{
+    "name": "beeline-py-propagation-tests",
+    "version": "0.0.1",
+    "description": "",
+    "main": "index.js",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/vlaaaaaaad/beeline-py-propagation-tests.git"
+    },
+    "author": "Vlad Ionescu",
+    "bugs": {
+        "url": "https://github.com/vlaaaaaaad/beeline-py-propagation-tests/issues"
+    },
+    "homepage": "https://github.com/vlaaaaaaad/beeline-py-propagation-tests",
+    "dependencies": {
+        "serverless": "^1.54.0",
+        "serverless-apigateway-service-proxy": "^1.6.0",
+        "serverless-cloudformation-sub-variables": "^0.2.1",
+        "serverless-iam-roles-per-function": "^2.0.2",
+        "serverless-python-requirements": "^5.0.0"
+    }
+}

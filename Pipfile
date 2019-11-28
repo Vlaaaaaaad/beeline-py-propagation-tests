@@ -1,0 +1,17 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+pytest = "*"
+
+[packages]
+honeycomb-beeline = {editable = true,git = "https://github.com/Vlaaaaaaad/beeline-python",ref = "lambda-instrumentation"}
+boto3 = "*"
+
+[requires]
+python_version = "3.7"
+
+[scripts]
+tests = "pytest"
